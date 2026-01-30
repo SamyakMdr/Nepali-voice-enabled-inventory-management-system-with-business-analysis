@@ -1,4 +1,16 @@
 .venv/
-.venv/
 __pycache__/
 *.dylib
+.DS_Store
+*.pyc
+
+# Generated artifacts
+backend/processed_audio/
+backend/temp_audio/
+backend/temp_storage/
+
+# Training outputs
+backend/training/results/
+
+# Model weights
+backend/bert_brain_model/*.safetensors

@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Generated artifacts
+processed_audio/
+temp_audio/
+temp_storage/
+
+# Training outputs
+training/results/
+
+# Model weights
+bert_brain_model/*.safetensors
