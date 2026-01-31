@@ -1,26 +1,24 @@
-import sys
+import psycopg2
 import os
-from sqlalchemy import text
 
-# --- FIX IMPORTS ---
-current_dir = os.getcwd()
-sys.path.append(os.path.join(current_dir, "backend"))
-sys.path.append(current_dir)
+DB_NAME = "nepali_inventory"
+DB_USER = "postgres"
+DB_PASS = "admin"
+DB_HOST = "localhost"
+DB_PORT = "5434"
 
-from app.database import engine
+try:
+    conn = psycopg2.connect(
+        dbname=DB_NAME, user=DB_USER, password=DB_PASS, host=DB_HOST, port=DB_PORT
+    )
+    conn.autocommit = True
+    cur = conn.cursor()
 
-print("🛠  Fixing Database: Adding missing columns...")
+    print("🗑️  Dropping the 'users' table...")
+    cur.execute("DROP TABLE IF EXISTS users CASCADE;")
+    
+    print("✅ Table dropped! Restart your server to recreate it correctly.")
+    conn.close()
 
-with engine.connect() as connection:
-    # We use a transaction to make sure changes are saved
-    with connection.begin():
-        print("1️⃣  Adding 'cost_price'...")
-        connection.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price FLOAT DEFAULT 0.0;"))
-        
-        print("2️⃣  Adding 'selling_price'...")
-        connection.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price FLOAT DEFAULT 0.0;"))
-        
-        print("3️⃣  Adding 'total_value' to transactions...")
-        connection.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS total_value FLOAT DEFAULT 0.0;"))
-
-print("✅ Database successfully updated! Now you can run seed.py.")
+except Exception as e:
+    print(f"❌ Error: {e}")
