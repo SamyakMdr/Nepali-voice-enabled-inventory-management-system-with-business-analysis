@@ -3,27 +3,36 @@ import uuid
 import whisper
 import torch
 import difflib
-from datetime import datetime
-from typing import Optional, List
+from typing import List
 
 from fastapi import FastAPI, File, UploadFile, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 from .database import engine, get_db
 from . import models, schemas
 
+# --- IMPORT ROUTERS ---
+from .auth import router as auth_router       # Login/Register
+from .routers import sales, reports           # Sales Stats & PDF Reports
+
 # --- IMPORT BRAIN & NORMALIZER ---
+# (Graceful fallback if these files don't exist yet)
 try:
     from .brain import process_command_with_ai, normalize_nepali
 except ImportError:
     def process_command_with_ai(text): return {"intent": "UNKNOWN", "item": None}
     def normalize_nepali(text): return text
 
+# Create DB Tables
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Nepali Voice Inventory System")
+
+# --- ACTIVATE ROUTERS ---
+app.include_router(auth_router)     # ✅ Enables /auth/login & /auth/register
+app.include_router(sales.router)    # ✅ Enables /sales/stats
+app.include_router(reports.router)  # ✅ Enables /reports/generate
 
 # --- WHISPER SETUP ---
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -49,30 +58,24 @@ def find_closest_product(db: Session, spoken_item: str):
         return None
 
     # 🚨 MANUAL CORRECTION MAP (The 'Accent' Dictionary)
-    # Maps WRONG inputs -> CORRECT Database Names
     overrides = {
-        # DAAL (Lentils) - Fixes "Taal", "Thaal"
+        # DAAL
         "ताल": "दाल", "टाल": "दाल", "थाल": "दाल", "दान": "दाल", "दाली": "दाल",
-        
-        # CHAMAL (Rice)
+        # CHAMAL
         "जमाल": "चामल", "सामल": "चामल", "छामल": "चामल", "कामल": "चामल",
-        
-        # CHINI (Sugar)
+        # CHINI
         "चिनि": "चिनी", "छिनि": "चिनी", "सिनी": "चिनी", "चिन्दि": "चिनी",
-        
-        # TEL (Oil)
+        # TEL
         "टेल": "तेल", "टैल": "तेल", "पेल": "तेल", "तैल": "तेल",
-        
-        # NUN (Salt)
+        # NUN
         "नुन": "नुन", "नून": "नुन", "लुन": "नुन", "मुन": "नुन"
     }
     
-    # 1. Apply Dictionary Fixes First
+    # 1. Apply Dictionary Fixes
     if spoken_item in overrides:
         print(f"🔧 Auto-Correction: '{spoken_item}' -> '{overrides[spoken_item]}'")
         spoken_item = overrides[spoken_item]
 
-    # Get valid products
     all_products = db.query(models.Product).all()
     spoken_norm = normalize_nepali(spoken_item)
 
@@ -83,28 +86,23 @@ def find_closest_product(db: Session, spoken_item: str):
         db_name = product.name_nepali
         db_norm = normalize_nepali(db_name)
 
-        # 2. Exact Match
-        if spoken_norm == db_norm:
-            return product
-        
-        # 3. Substring Match
-        if db_norm in spoken_norm:
-            return product
+        # 2. Exact & Substring Match
+        if spoken_norm == db_norm: return product
+        if db_norm in spoken_norm: return product
 
-        # 4. Fuzzy Similarity
+        # 3. Fuzzy Match
         score = difflib.SequenceMatcher(None, spoken_norm, db_norm).ratio()
         if score > highest_score:
             highest_score = score
             best_match = product
 
-    # Only accept fuzzy match if score > 60%
     if highest_score > 0.6:
-        print(f"🔍 Fuzzy Match Found: '{spoken_item}' -> '{best_match.name_nepali}' (Score: {highest_score:.2f})")
+        print(f"🔍 Fuzzy Match: '{spoken_item}' -> '{best_match.name_nepali}' ({highest_score:.2f})")
         return best_match
     
     return None
 
-# --- CORE LOGIC ---
+# --- CORE LOGIC (UPDATED WITH TOTALS & ALERTS) ---
 def execute_inventory_logic(text: str, db: Session):
     print(f"🧠 AI Thinking on: '{text}'...")
 
@@ -116,7 +114,7 @@ def execute_inventory_logic(text: str, db: Session):
     unit = ai_data.get("unit", "kg")
     customer = ai_data.get("customer")
 
-    # Use the Smart Finder
+    # Use Smart Finder
     product = find_closest_product(db, raw_item)
     
     item_display = product.name_nepali if product else raw_item
@@ -126,64 +124,90 @@ def execute_inventory_logic(text: str, db: Session):
     if not product:
         if intent == "CHECK":
              return {"intent": intent, "response": "❌ यो सामान स्टकमा भेटिएन।"}
-        
-        # STRICT MODE: If we can't find it in the Dictionary or Fuzzy Match, reject it.
-        # This prevents creating junk items like "Taal".
         return {"intent": intent, "response": f"❌ '{raw_item}' बुझिन। (दाल, चामल, चिनी, तेल, नुन मात्र उपलब्ध छ)"}
 
     # --- ADD LOGIC ---
     if intent == "ADD":
         product.quantity += qty
         
-        trans = models.Transaction(product_id=product.id, change_amount=qty, transaction_type="PURCHASE")
+        # Calculate Total Cost
+        total_cost = qty * product.cost_price
+        
+        trans = models.Transaction(
+            product_id=product.id, 
+            change_amount=qty, 
+            transaction_type="PURCHASE",
+            total_value=total_cost
+        )
         db.add(trans)
         db.commit()
         
-        total = convert_to_nepali_num(product.quantity)
+        # New Totals
+        new_total_qty = convert_to_nepali_num(product.quantity)
+        cost_nepali = convert_to_nepali_num(total_cost)
+        
         return {
             "intent": intent, 
             "item": item_display,
-            "response": f"✅ {item_display} {qty_display} {product.unit} थपियो। जम्मा: {total}"
+            "response": f"✅ {item_display} {qty_display} {product.unit} थपियो। (जम्मा: {new_total_qty} {product.unit})"
         }
 
     # --- SALE LOGIC ---
     if intent == "SALE":
         if product.quantity < qty:
-            return {"intent": intent, "response": f"❌ {item_display} को स्टक पर्याप्त छैन।"}
+            rem_qty = convert_to_nepali_num(product.quantity)
+            return {"intent": intent, "response": f"❌ {item_display} को स्टक पर्याप्त छैन। (बाँकी: {rem_qty} {product.unit})"}
         
         product.quantity -= qty
         
-        trans = models.Transaction(product_id=product.id, change_amount=-qty, transaction_type="SALE")
+        # Calculate Total Revenue
+        total_revenue = qty * product.selling_price
+        
+        trans = models.Transaction(
+            product_id=product.id, 
+            change_amount=-qty, 
+            transaction_type="SALE",
+            total_value=total_revenue
+        )
         db.add(trans)
         db.commit()
         
+        # Totals & Alerts
         rem = convert_to_nepali_num(product.quantity)
+        revenue_nepali = convert_to_nepali_num(total_revenue)
         
-        # Alert on Sale
-        alert_msg = " ⚠️ चेतावनी: स्टक कम भयो!" if product.quantity <= 5 else ""
-        action_text = f"{customer} लाई बेचियो" if customer else "घटाइयो"
+        # Low Stock Alert Logic (< 5)
+        alert_msg = " ⚠️ चेतावनी: स्टक कम भयो!" if product.quantity <= 5.0 else ""
+        
+        action_text = f"{customer} लाई बेचियो" if customer else "बिक्री भयो"
 
         return {
             "intent": intent, 
             "item": item_display,
-            "response": f"✅ {item_display} {qty_display} {product.unit} {action_text}। बाँकी: {rem}।{alert_msg}"
+            "response": f"✅ {item_display} {qty_display} {product.unit} {action_text}। जम्मा: रु {revenue_nepali}। (बाँकी: {rem} {product.unit}){alert_msg}"
         }
 
     # --- CHECK LOGIC ---
     if intent == "CHECK":
         total = convert_to_nepali_num(product.quantity)
+        sp_nepali = convert_to_nepali_num(product.selling_price)
         
-        # Alert on Check
-        alert_msg = " ⚠️ चेतावनी: स्टक कम भयो!" if product.quantity <= 5 else ""
+        # Low Stock Alert Logic (< 5)
+        alert_msg = " ⚠️ चेतावनी: स्टक कम भयो!" if product.quantity <= 5.0 else ""
         
         return {
             "intent": intent, 
-            "response": f"📦 {item_display} गोदाममा {total} {product.unit} छ।{alert_msg}"
+            "response": f"📦 {item_display}: {total} {product.unit}। (मूल्य: रु {sp_nepali}/kg){alert_msg}"
         }
 
     return {"intent": "UNKNOWN", "response": "❌ मैले आदेश बुझिन।"}
 
 # --- ENDPOINTS ---
+
+@app.get("/")
+def read_root():
+    return {"message": "SmartBiz AI System is Online 🚀"}
+
 @app.post("/command")
 def process_command(cmd: Command, db: Session = Depends(get_db)):
     return execute_inventory_logic(cmd.text, db)
@@ -196,7 +220,6 @@ async def process_voice_command(file: UploadFile = File(...), db: Session = Depe
         with open(filepath, "wb") as f:
             f.write(await file.read())
 
-        # Updated Hint
         hint = "सामानहरु: चामल, दाल, तेल, चिनी, नुन, साबुन"
         result = model.transcribe(filepath, language="ne", fp16=False, initial_prompt=hint)
         
@@ -215,12 +238,3 @@ async def process_voice_command(file: UploadFile = File(...), db: Session = Depe
 @app.get("/products", response_model=List[schemas.ProductResponse])
 def get_products(db: Session = Depends(get_db)):
     return db.query(models.Product).all()
-
-@app.get("/sales/daily")
-def daily_sales(db: Session = Depends(get_db)):
-    today = datetime.now().date()
-    sales = db.query(models.Transaction).filter(
-        models.Transaction.transaction_type == "SALE",
-        func.date(models.Transaction.timestamp) >= today
-    ).all()
-    return {"date": str(today), "total_sales_count": len(sales), "transactions": sales}

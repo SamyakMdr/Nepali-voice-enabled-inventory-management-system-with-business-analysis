@@ -25,13 +25,30 @@ try:
     print("✅ BERT Loaded Successfully!")
 except Exception as e:
     print(f"⚠️ BERT Load Failed: {e}")
-    print("⚠️ Switching to 'Rule-Based' Mode (Old Brain).")
+    print("⚠️ Switching to 'Rule-Based' Mode.")
 
-# --- 2. PHONETIC NORMALIZER ---
+# --- 2. DATA MAPPINGS ---
+
+# Nepali Numbers
+NEPALI_NUMBERS = {
+    "एक": 1, "दुई": 2, "तीन": 3, "चार": 4, "पाँच": 5,
+    "छ": 6, "सात": 7, "आठ": 8, "नौ": 9, "दश": 10,
+    "एघार": 11, "बाह्र": 12, "१": 1, "२": 2, "३": 3, "४": 4, "५": 5,
+    "६": 6, "७": 7, "८": 8, "९": 9, "१०": 10
+}
+
+# STRONG KEYWORDS (The "Cheat Sheet" for the AI)
+# If these words appear, we don't even need to ask BERT.
+STRONG_KEYWORDS = {
+    "SALE": ["bech", "ghata", "kata", "katao", "katayo", "sale", "deu", "dinus", "gayo", "biki", "sales"],
+    "ADD": ["kin", "thap", "lyayo", "aayo", "rakh", "jod", "add", "buy", "purchase"],
+    "CHECK": ["kati", "katti", "check", "stock", "her", "status", "baki", "cha", "chha", "inventory"]
+}
+
+# --- 3. HELPER FUNCTIONS ---
+
 def normalize_nepali(text):
-    """
-    Flattens confused Nepali characters to a single form.
-    """
+    """Flattens confused Nepali characters."""
     if not text: return ""
     text = text.lower().strip()
     
@@ -43,7 +60,7 @@ def normalize_nepali(text):
     text = text.replace('व', 'ब')
     text = text.replace('ण', 'न')
     text = text.replace('त', 'द') # Fixes Taal -> Daal
-    text = text.replace('ध', 'द') # Fixes Dha -> Da
+    text = text.replace('ध', 'द') 
     
     # Map Vowels
     text = text.replace('ी', 'ि')
@@ -53,41 +70,42 @@ def normalize_nepali(text):
 
     return text
 
-# --- 3. HELPER FUNCTIONS ---
-
 def nepali_num_to_english(text):
     mapping = str.maketrans("०१२३४५६७८९", "0123456789")
     return text.translate(mapping)
 
 def extract_quantity(text):
+    """Extracts numbers from Digits OR Words (ek, dui)"""
     clean_text = nepali_num_to_english(text)
+    
+    # 1. Look for digits (e.g. 10, 2.5)
     match = re.search(r"(\d+(\.\d+)?)", clean_text)
     if match:
         return float(match.group(1))
+    
+    # 2. Look for Number Words (Nepali)
+    words = text.split()
+    for word in words:
+        if word in NEPALI_NUMBERS:
+            return float(NEPALI_NUMBERS[word])
+            
     return 1.0
 
 def extract_item(text):
-    """Removes command words and noise words to find the Item Name"""
+    """Removes command words to find the Item Name"""
     
-    # --- MASSIVE IGNORE LIST (ACCENT PROOF) ---
+    # Words to ignore so we only see the ITEM Name
     ignore_words = [
-        # COMMANDS (ADD)
-        "add", "thap", "thapa", "thaba", "thapo", "rakh", "rakha", "kin", "kinera", "lyau", "aayo", "ayo",
-        # COMMANDS (SELL/REMOVE)
-        "sale", "bech", "becha", "bach", "katau", "kata", "ghata", "hata", "gata", "deu", "dinus", "gayo",
-        # COMMANDS (CHECK)
-        "check", "chek", "kati", "katti", "koti", "her", "hera", "count", "gan", "stok", "stock",
+        # COMMANDS
+        "add", "thap", "thapo", "rakh", "kin", "lyau", "aayo",
+        "sale", "bech", "katao", "kata", "ghata", "hata", "deu", "gayo",
+        "check", "kati", "her", "stock", "inventory",
         # STATUS
-        "cha", "chha", "ca", "sa", "ho", "baki", "baaki", "bagi", "baagi", "bacheko",
-        # UNITS (Mispronounced)
-        "kg", "kilo", "chilo", "tilo", "killa", "kila",
-        "liter", "litar", "nitar", "rita", 
-        "packet", "pyaket", "jacket",
-        "piece", "pis", "fees",
+        "cha", "chha", "ho", "baki",
+        # UNITS
+        "kg", "kilo", "chilo", "liter", "packet", "piece", "pis",
         # FILLERS
-        "ma", "ko", "le", "lai", "ta", "ni", "hai", "la", "tyo", "yo", "inventory", "please",
-        "ek", "dui", "tin", "char", "paach", "kilo", # Nepali Numbers as text
-        "ti", "te", "chahiyo"
+        "ma", "ko", "le", "lai", "ta", "ni", "hai", "la", "yo", "tyo", "ek", "dui"
     ]
     
     words = text.split()
@@ -95,10 +113,11 @@ def extract_item(text):
     
     for word in words:
         norm_word = normalize_nepali(word)
-        # Filter logic
+        # Filter: Not a number, not in ignore list
         if not re.search(r'\d', nepali_num_to_english(word)) and \
            word.lower() not in ignore_words and \
-           norm_word not in ignore_words:
+           norm_word not in ignore_words and \
+           word not in NEPALI_NUMBERS:
             clean_words.append(word)
             
     return " ".join(clean_words) if clean_words else None
@@ -108,40 +127,45 @@ def extract_item(text):
 def process_command_with_ai(text):
     print(f"🧠 Processing: '{text}'")
     text_clean = text.lower().strip()
+    norm_text = normalize_nepali(text_clean)
     
-    # A. PREDICT INTENT
     intent = "UNKNOWN"
     
-    if BERT_AVAILABLE:
+    # A. RULE-BASED CHECK (PRIORITY 1)
+    # This ensures "Katao" works 100% of the time, even if BERT is confused.
+    for category, keywords in STRONG_KEYWORDS.items():
+        if any(k in norm_text or k in text_clean for k in keywords):
+            intent = category
+            print(f"⚡ Rule Match: {intent} (Keyword found)")
+            break
+    
+    # B. BERT MODEL CHECK (PRIORITY 2)
+    # Only use BERT if Rules failed
+    if intent == "UNKNOWN" and BERT_AVAILABLE:
         try:
             inputs = tokenizer(text_clean, return_tensors="pt", truncation=True, padding=True, max_length=128).to(device)
             with torch.no_grad():
                 logits = model(**inputs).logits
             
-            # Boost Check Intent if we hear specific status words
-            if any(w in text_clean for w in ["kati", "baagi", "bagi", "cha", "katti"]):
+            # Context Boost for "Check"
+            if any(w in norm_text for w in ["kati", "cha", "katti"]):
                  if "CHECK" in id_to_label.values():
                      check_idx = [k for k, v in id_to_label.items() if v == "CHECK"][0]
                      logits[0][check_idx] += 2.0
 
             predicted_class_id = logits.argmax().item()
-            intent = id_to_label[predicted_class_id]
+            bert_intent = id_to_label[predicted_class_id]
             confidence = torch.softmax(logits, dim=1).max().item()
             
-            print(f"🤖 BERT Intent: {intent} (Confidence: {confidence:.2f})")
-            if confidence < 0.6: intent = "UNKNOWN"
-
+            # Lowered threshold slightly to 0.5 to catch more commands
+            if confidence > 0.5:
+                intent = bert_intent
+                print(f"🤖 BERT Intent: {intent} (Confidence: {confidence:.2f})")
+            else:
+                print(f"⚠️ BERT Low Confidence: {bert_intent} ({confidence:.2f})")
+                
         except Exception as e:
             print(f"❌ BERT Error: {e}")
-            intent = "UNKNOWN"
-    
-    # B. FALLBACK (If BERT fails)
-    if intent == "UNKNOWN":
-        norm_text = normalize_nepali(text_clean)
-        # Expanded Keyword Fallback
-        if any(w in norm_text for w in ["thap", "thaba", "add", "kin", "aayo", "rakh"]): intent = "ADD"
-        elif any(w in norm_text for w in ["bech", "ghata", "kata", "sale", "gayo"]): intent = "SALE"
-        elif any(w in norm_text for w in ["kati", "baki", "bagi", "her", "check"]): intent = "CHECK"
 
     # C. EXTRACT
     item = extract_item(text_clean)
