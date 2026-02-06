@@ -6,7 +6,7 @@ DB_CONFIG = {
     "user": "postgres",
     "password": "admin",
     "host": "localhost",
-    "port": "5434" # Your Docker port
+    "port": "5432" # Your Docker port
 }
 
 print("🔧 Connecting to Database...")
