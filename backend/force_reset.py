@@ -15,7 +15,7 @@ try:
     DB_USER = "postgres"
     DB_PASS = "admin"
     DB_HOST = "localhost"
-    DB_PORT = "5432"
+    DB_PORT = "5434"
 
     conn = psycopg2.connect(
         dbname=DB_NAME, user=DB_USER, password=DB_PASS, host=DB_HOST, port=DB_PORT
