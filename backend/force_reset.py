@@ -5,17 +5,14 @@ from app.models import Base
 
 # 1. Connect directly and DROP the broken table
 try:
-    # Extract connection info from the URL for raw psycopg2 connection
-    # URL format: postgresql://postgres:admin@localhost:5432/nepali_inventory
     print("🧨 Connecting to database to destroy old 'users' table...")
     
-    # Simple parsing (assuming standard format you used)
-    # You can also just hardcode these if the parsing fails
+    # HARDCODED SETTINGS FOR YOUR DOCKER SETUP
     DB_NAME = "nepali_inventory"
     DB_USER = "postgres"
     DB_PASS = "admin"
     DB_HOST = "localhost"
-    DB_PORT = "5432"
+    DB_PORT = "5434"  # ✅ KEEP THIS 5434 for your Mac!
 
     conn = psycopg2.connect(
         dbname=DB_NAME, user=DB_USER, password=DB_PASS, host=DB_HOST, port=DB_PORT

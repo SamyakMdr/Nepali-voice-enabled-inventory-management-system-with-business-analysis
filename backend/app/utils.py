@@ -3,7 +3,7 @@ from passlib.context import CryptContext
 # Use bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Max bytes for bcrypt
+# Max bytes for bcrypt prevents crashes on long passwords
 MAX_BCRYPT_BYTES = 72
 
 def hash_password(password: str) -> str:

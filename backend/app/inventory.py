@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from .database import get_db
-from .models import Product, Transaction
+from app.database import get_db
+from app.models import Product, Transaction
 from pydantic import BaseModel
 import re
 
@@ -11,7 +11,6 @@ router = APIRouter(
     tags=["Inventory & Voice"]
 )
 
-# Schema for Voice Command Input
 class VoiceCommand(BaseModel):
     command: str
 
@@ -20,9 +19,12 @@ class VoiceCommand(BaseModel):
 def process_voice(data: VoiceCommand, db: Session = Depends(get_db)):
     text = data.command.lower()
     
-    # Logic: "Sell 2 kg Rice"
-    # Regex to find number and item
-    match = re.search(r"(\d+)\s*(kg|liter|packet)?\s*(\w+)", text)
+    # Logic: "Sell 2 packet Biscuit" or "Sell 1 kg Chiura"
+    # Regex captures:
+    # Group 1: Quantity (digits)
+    # Group 2: Unit (kg, liter, packet, etc.) - Optional
+    # Group 3: Item Name
+    match = re.search(r"(\d+)\s*(kg|liter|packet|piece|pieces)?\s*(\w+)", text)
     
     if "sell" in text and match:
         qty = float(match.group(1))
@@ -38,17 +40,17 @@ def process_voice(data: VoiceCommand, db: Session = Depends(get_db)):
             return {"error": f"Product '{item_name}' not found."}
         
         if product.quantity < qty:
-            return {"error": "Not enough stock!"}
+            return {"error": f"Not enough stock! You only have {product.quantity} {product.unit}."}
             
         # Calculate Total Price
         total_price = qty * product.selling_price
         
-        # ✅ Create Transaction (Now 'total_value' will work!)
+        # Create Transaction
         new_transaction = Transaction(
             product_id=product.id,
             change_amount=-qty,
             transaction_type="SALE",
-            total_value=total_price  # <--- This caused your error before
+            total_value=total_price  
         )
         
         # Update Stock
@@ -58,22 +60,22 @@ def process_voice(data: VoiceCommand, db: Session = Depends(get_db)):
         db.commit()
         
         return {
-            "message": f"Sold {qty} {product.unit} of {product.name_english}",
+            "message": f"Sold {qty} {product.unit} of {product.name_english} ({product.name_nepali})",
             "total_price": total_price,
             "remaining_stock": product.quantity
         }
 
-    return {"message": "Command not understood. Try 'Sell 2 kg Rice'"}
+    return {"message": "Command not understood. Try 'Sell 2 packet Biscuit'"}
 
 # 2. 📊 REPORT GENERATION API
 @router.get("/reports")
 def generate_report(db: Session = Depends(get_db)):
-    # Calculate Total Sales
+    # Calculate Total Sales Revenue
     total_sales = db.query(func.sum(Transaction.total_value))\
         .filter(Transaction.transaction_type == "SALE").scalar() or 0.0
         
-    # Get recent transactions
-    history = db.query(Transaction).order_by(Transaction.timestamp.desc()).limit(5).all()
+    # Get recent transactions (Kept limit at 10 for better visibility)
+    history = db.query(Transaction).order_by(Transaction.timestamp.desc()).limit(10).all()
     
     return {
         "total_revenue": total_sales,

@@ -13,7 +13,7 @@ import {
 import { useFocusEffect } from "expo-router"; // Use this to auto-refresh when you open the tab
 
 // ✅ YOUR IP ADDRESS
-const API_URL = "http://192.168.254.20:8000"; // your local backend IP
+const API_URL = "http://192.168.1.93:8000"; // your local backend IP
 
 
 interface Product {

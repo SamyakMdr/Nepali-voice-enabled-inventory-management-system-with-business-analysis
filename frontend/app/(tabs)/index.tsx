@@ -15,7 +15,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ✅ YOUR IP ADDRESS
-const API_URL = "http://192.168.254.20:8000";
+const API_URL = "http://192.168.1.93:8000";
 
 // Assets
 const Microphone = require("../../assets/images/Microphone.png");
