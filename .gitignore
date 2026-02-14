@@ -16,4 +16,8 @@ backend/temp_storage/
 backend/training/results/
 
 # Model weights
+<<<<<<< HEAD
 backend/bert_brain_model/*.safetensors
+=======
+backend/bert_brain_model/*.safetensors
+>>>>>>> 526d1f3e7242931859b44adfb2172bd7426d4457

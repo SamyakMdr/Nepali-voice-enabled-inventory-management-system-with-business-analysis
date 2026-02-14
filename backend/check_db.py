@@ -6,7 +6,11 @@ DB_NAME = "nepali_inventory"
 DB_USER = "postgres"
 DB_PASS = "admin"
 DB_HOST = "localhost"
+<<<<<<< HEAD
 DB_PORT = "5434"  # <--- Crucial! Your docker ps says 5434
+=======
+DB_PORT = "5432"  # <--- Crucial! Your docker ps says 5434
+>>>>>>> 526d1f3e7242931859b44adfb2172bd7426d4457
 
 print(f"🕵️‍♂️ Connecting to {DB_HOST}:{DB_PORT}...")
 
