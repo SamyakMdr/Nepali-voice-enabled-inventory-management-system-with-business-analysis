@@ -5,11 +5,7 @@ DB_NAME = "nepali_inventory"
 DB_USER = "postgres"
 DB_PASS = "admin"
 DB_HOST = "localhost"
-<<<<<<< HEAD
-DB_PORT = "5434"
-=======
-DB_PORT = "5432"
->>>>>>> 526d1f3e7242931859b44adfb2172bd7426d4457
+DB_PORT = "5434"  # ✅ Keep this 5434 for your Mac!
 
 try:
     conn = psycopg2.connect(

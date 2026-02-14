@@ -38,13 +38,11 @@ openai==2.15.0
 openai-whisper==20250625
 packaging==26.0
 pandas==3.0.0
-<<<<<<< HEAD
-=======
 passlib==1.7.4
->>>>>>> 526d1f3e7242931859b44adfb2172bd7426d4457
 pillow==12.1.0
 platformdirs==4.5.1
 pooch==1.8.2
+protobuf==3.20.3
 psycopg2-binary==2.9.11
 pycparser==3.0
 pydantic==2.12.5
@@ -85,7 +83,4 @@ uvloop==0.22.1
 watchfiles==1.1.1
 websockets==16.0
 whisper-openai==1.0.0
-<<<<<<< HEAD
-=======
-email-validator==2.3.1
->>>>>>> 526d1f3e7242931859b44adfb2172bd7426d4457
+email-validator
