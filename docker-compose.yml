@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: nepali_inventory_container
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: nepali_inventory
+    ports:
+      # We map 5434 (your old port) to the internal DB
+      - "5434:5432"
+    volumes:
+      # CRITICAL: This must match the volume name you used before!
+      - postgres_data_final:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin_container
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+volumes:
+  # This tells Docker: "Don't create a new box, use the existing 'final' box"
+  postgres_data_final:
+    external: false
