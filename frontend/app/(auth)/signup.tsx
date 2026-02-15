@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 // ✅ USE THE SAME IP THAT WORKED FOR LOGIN
-const API_URL = "http://192.168.1.93:8000";
+const API_URL = "http://192.168.1.95:8000";
 
 export default function SignupScreen() {
   const router = useRouter();

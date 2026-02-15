@@ -1,48 +1,62 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-from .database import Base
+from sqlalchemy.ext.declarative import declarative_base
+from datetime import datetime
+from passlib.context import CryptContext
 
-# --- USER MODEL ---
+# 1. Setup Database Base
+Base = declarative_base()
+
+# 2. Setup Password Hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# ==========================================
+# 🗄️ DATABASE TABLES
+# ==========================================
+
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    password = Column(String)
 
-# --- PRODUCT MODEL ---
-class Product(Base):
-    __tablename__ = "products"
-    
     id = Column(Integer, primary_key=True, index=True)
-    name_english = Column(String, index=True) 
-    name_nepali = Column(String, unique=True, index=True) 
-    
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    role = Column(String, default="staff")  # admin, staff
+
+class Product(Base):
+    __tablename__ = "inventory"  # This matches the SQL used in inventory.py
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)  # e.g., "chamal"
+    name_english = Column(String, nullable=True)    # e.g., "Rice"
     quantity = Column(Float, default=0.0)
-    unit = Column(String, default="kg")
-    
-    # Prices
+    unit = Column(String, default="kg")             # kg, ltr, packet
     cost_price = Column(Float, default=0.0)
     selling_price = Column(Float, default=0.0)
     
-    # Relationship
+    # Relationship to transactions
     transactions = relationship("Transaction", back_populates="product")
 
-# --- TRANSACTION MODEL ---
 class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"))
-    
-    change_amount = Column(Float)      # e.g., -2.0 for selling 2kg
-    transaction_type = Column(String)  # "SALE" or "PURCHASE"
-    
-    # Crucial for revenue reports
-    total_value = Column(Float, default=0.0) 
-    
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationship
+    product_id = Column(Integer, ForeignKey("inventory.id"))
+    transaction_type = Column(String)  # "PURCHASE" (Add) or "SALE" (Deduct)
+    quantity = Column(Float)
+    total_amount = Column(Float, default=0.0)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
     product = relationship("Product", back_populates="transactions")
+
+# ==========================================
+# 🔐 MISSING PASSWORD FUNCTIONS (Added Here)
+# ==========================================
+
+def hash_password(password: str):
+    """Hashes a plain text password."""
+    return pwd_context.hash(password)
+
+def verify_password(plain_password, hashed_password):
+    """Checks if a plain password matches the hash."""
+    return pwd_context.verify(plain_password, hashed_password)
